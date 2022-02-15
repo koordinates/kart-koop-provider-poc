@@ -25,16 +25,8 @@ function Model (koop) {}
 // req.params.layer
 // req.params.method
 Model.prototype.getData = function (req, callback) {
-  const parts = req.params.layer.split("@", 3);
-  const len = parts.length;
-  if (len > 2) {
-    const error = new Error('Invalid layer format: should be [COMMITISH@]REPOSITORY');
-    error.code = 400;
-    return callback(error)
-  }
-
-  const commitish = (len == 2) ? parts[0] : "HEAD";
-  const repo = (len == 2) ? parts[1] : parts[0];
+  const repo = req.params.host;
+  const commitish = req.params.id;
 
   // Call the remote API with our developer key
   exec(`kart -C ${repo} diff [EMPTY]...${commitish} -ogeojson`, (err, stdout, stderr) => {
