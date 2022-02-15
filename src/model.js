@@ -8,6 +8,9 @@
 const request = require('request').defaults({ gzip: true, json: true })
 const config = require('config')
 
+const { exec } = require("child_process");
+
+
 function Model (koop) {}
 
 // Public function to return data from the
@@ -22,92 +25,42 @@ function Model (koop) {}
 // req.params.layer
 // req.params.method
 Model.prototype.getData = function (req, callback) {
-  const key = config.trimet.key
+  const parts = req.params.layer.split("@", 3);
+  const len = parts.length;
+  if (len > 2) {
+    const error = new Error('Invalid layer format: should be [COMMITISH@]REPOSITORY');
+    error.code = 400;
+    return callback(error)
+  }
+
+  const commitish = (len == 2) ? parts[0] : "HEAD";
+  const repo = (len == 2) ? parts[1] : parts[0];
 
   // Call the remote API with our developer key
-  request(`https://developer.trimet.org/ws/v2/vehicles/onRouteOnly/false/appid/${key}`, (err, res, body) => {
-    if (err) return callback(err)
+  exec(`kart -C ${repo} diff [EMPTY]...${commitish} -ogeojson`, (err, stdout, stderr) => {
+    if (err) {
+      const error = new Error(stderr)
+      error.code = 500;  // Also useful: err.errror ?
+      return callback(error);
+    }
 
-    // translate the response into geojson
-    const geojson = translate(body)
+    geojson = JSON.parse(stdout);
 
     // Optional: cache data for 10 seconds at a time by setting the ttl or "Time to Live"
     // geojson.ttl = 10
 
     // Optional: Service metadata and geometry type
-    // geojson.metadata = {
-    //   name: 'Koop Sample Provider',
-    //   description: `Generated from ${url}`,
-    //   geometryType: 'Polygon' // Default is automatic detection in Koop
-    // }
+    geojson.metadata = {
+      name: 'Kart Sample Provider',
+      description: `Generated from ${commitish} @ ${repo}`,
+      // geometryType: 'Polygon' // Default is automatic detection in Koop
+    }
 
     // hand off the data to Koop
     callback(null, geojson)
   })
 }
 
-function translate (input) {
-  return {
-    type: 'FeatureCollection',
-    features: input.resultSet.vehicle.map(formatFeature)
-  }
-}
-
-function formatFeature (inputFeature) {
-  // Most of what we need to do here is extract the longitude and latitude
-  const feature = {
-    type: 'Feature',
-    properties: inputFeature,
-    geometry: {
-      type: 'Point',
-      coordinates: [inputFeature.longitude, inputFeature.latitude]
-    }
-  }
-  // But we also want to translate a few of the date fields so they are easier to use downstream
-  const dateFields = ['expires', 'serviceDate', 'time']
-  dateFields.forEach(field => {
-    feature.properties[field] = new Date(feature.properties[field]).toISOString()
-  })
-  return feature
-}
-
 module.exports = Model
 
-/* Example provider API:
-   - needs to be converted to GeoJSON Feature Collection
-{
-  "resultSet": {
-  "queryTime": 1488465776220,
-  "vehicle": [
-    {
-      "tripID": "7144393",
-      "signMessage": "Red Line to Beaverton",
-      "expires": 1488466246000,
-      "serviceDate": 1488441600000,
-      "time": 1488465767051,
-      "latitude": 45.5873117,
-      "longitude": -122.5927705,
-    }
-  ]
-}
 
-Converted to GeoJSON:
-
-{
-  "type": "FeatureCollection",
-  "features": [
-    "type": "Feature",
-    "properties": {
-      "tripID": "7144393",
-      "signMessage": "Red Line to Beaverton",
-      "expires": "2017-03-02T14:50:46.000Z",
-      "serviceDate": "2017-03-02T08:00:00.000Z",
-      "time": "2017-03-02T14:42:47.051Z",
-    },
-    "geometry": {
-      "type": "Point",
-      "coordinates": [-122.5927705, 45.5873117]
-    }
-  ]
-}
-*/
