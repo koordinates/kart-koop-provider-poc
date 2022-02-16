@@ -29,7 +29,7 @@ Model.prototype.getData = function (req, callback) {
   const commitish = req.params.id;
 
   // Call the remote API with our developer key
-  exec(`kart -C ${repo} diff [EMPTY]...${commitish} -ogeojson`, (err, stdout, stderr) => {
+  exec(`kart -C ${repo} diff [EMPTY]...${commitish} -ogeojson --crs=EPSG:4326`, (err, stdout, stderr) => {
     if (err) {
       const error = new Error(stderr)
       error.code = 500;  // Also useful: err.errror ?
